@@ -13,7 +13,7 @@ using Rectangle = geo::Rectangle;
 
 class PlanarEnvironment {
 public:
-    PlanarEnvironment(const RealNum width, RealNum length, const Idx num_points_per_edge=100, Idx rand_seed=1);
+    PlanarEnvironment(const RealNum width, RealNum length, String file_name, const Idx num_points_per_edge=100, Idx rand_seed=1);
     ~PlanarEnvironment() = default;
     
     void RandomObstacles(const Idx num_rects,const RealNum max_size, const bool clear_previous_obstacles=true);
@@ -29,6 +29,7 @@ private:
     std::vector<Point> targets_;
     RealNum RandomNum(const RealNum min, const RealNum max) const;
     bool Intersecting(const Line& l1, const Line& l2) const;
+    String file_to_write;
 
 };
 

@@ -1,15 +1,18 @@
 #include "planar_environment.h"
 
+#include <iomanip>
+#include <fstream>
 #include <iostream>
 #include <random>
 
 namespace planar {
 
-PlanarEnvironment::PlanarEnvironment(const RealNum width, RealNum length, const Idx num_points_per_edge, Idx rand_seed):
+PlanarEnvironment::PlanarEnvironment(const RealNum width, RealNum length, String file_name, const Idx num_points_per_edge, Idx rand_seed):
     xmin_(0),
     xmax_(width),
     ymin_(0),
-    ymax_(length) {
+    ymax_(length),
+    file_to_write(file_name) {
 
     srand(rand_seed);
 
@@ -17,16 +20,29 @@ PlanarEnvironment::PlanarEnvironment(const RealNum width, RealNum length, const 
     RealNum dx = width/num_points_per_edge;
     RealNum dy = length/num_points_per_edge;
 
+	// open data file
+	std::ofstream data_file;
+	data_file.open(file_to_write + "_inspection_points.csv");
+	data_file << "x,y\n";
+
     RealNum x, y;
     for (Idx i = 0; i < num_points_per_edge; ++i) {
         x = xmin_ + i*dx;
         y = ymin_ + i*dy;
+
+		// write points
+		data_file << std::fixed << std::setprecision(16) << x << "," << ymin_ << "\n";
+		data_file << std::fixed << std::setprecision(16) << x << "," << ymax_ << "\n";
+		data_file << std::fixed << std::setprecision(16) << xmin_ << "," << y << "\n";
+		data_file << std::fixed << std::setprecision(16) << xmax_ << "," << y << "\n";
 
         targets_.push_back(Point(x, ymin_));
         targets_.push_back(Point(x, ymax_));
         targets_.push_back(Point(xmin_, y));
         targets_.push_back(Point(xmax_, y));
     }
+
+    data_file.close();
 }
 
 void PlanarEnvironment::RandomObstacles(const Idx num_rects,const RealNum max_size, const bool clear_previous_obstacles) {
@@ -34,14 +50,23 @@ void PlanarEnvironment::RandomObstacles(const Idx num_rects,const RealNum max_si
         obstacles_.clear();
     }
 
+    // open data file
+	std::ofstream data_file;
+	data_file.open(file_to_write + "_obstacles.csv");
+	data_file << "x,y,width,length\n";
+
     while (obstacles_.size() < num_rects) {
         RealNum width = RandomNum(0, max_size);
         RealNum length = RandomNum(0, max_size);
         RealNum x = RandomNum(xmin_ + 0.5*width, xmax_ - 0.5*width);
         RealNum y = RandomNum(ymin_ + 0.5*length, ymax_ - 0.5*length);
 
+        data_file << std::fixed << std::setprecision(16) << x << "," << y << "," << width << "," << length << "\n";
+
         obstacles_.emplace_back(Vec2(x, y), width, length);
     }
+
+    data_file.close();
 }
 
 bool PlanarEnvironment::IsCollisionFree(const std::vector<Line> links, bool show_details) const {

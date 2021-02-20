@@ -16,6 +16,7 @@
 #include <ompl/control/spaces/RealVectorControlSpace.h>
 #include <ompl/control/PathControl.h>
 #include <ompl/geometric/PathGeometric.h>
+#include <ompl/base/terminationconditions/IterationTerminationCondition.h>
 
 #include "planar_robot.h"
 #include "planar_environment.h"

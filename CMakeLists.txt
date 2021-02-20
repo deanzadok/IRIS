@@ -56,7 +56,8 @@ message("Boost headers: ${Boost_INCLUDE_DIRS}")
 message("Boost libraries: ${Boost_LIBRARIES}")
 
 # Check for OMPL
-find_package(OMPL QUIET)
+find_package(ompl REQUIRED)
+#find_package(OMPL QUIET)
 if (NOT OMPL_FOUND AND NOT OMPL_INCLUDE_DIRS)
     set(OMPL_INCLUDE_DIRS "OMPL-NOTFOUND" CACHE PATH "Location of OMPL headers")
     set(OMPL_LIBRARIES "OMPL-NOTFOUND" CACHE FILEPATH "Location of OMPL library")
