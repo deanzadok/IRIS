@@ -8,14 +8,14 @@ from models import VAEModel
 from load import load_data
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--data_file', '-data_file', help='path h5 data file', default='learning/data/data.h5', type=str)
+parser.add_argument('--data_file', '-data_file', help='path h5 data file', default='learning/data10k/data.h5', type=str)
 parser.add_argument('--output_dir', '-output_dir', help='path to output folder', default='learning/test_h5', type=str)
 parser.add_argument('--batch_size', '-batch_size', help='number of samples in one minibatch', default=32, type=int)
 parser.add_argument('--num_imgs', '-num_imgs', help='number of images to train on', default=3000, type=int)
-parser.add_argument('--epochs', '-epochs', help='number of epochs to train the model', default=40, type=int)
+parser.add_argument('--epochs', '-epochs', help='number of epochs to train the model', default=100, type=int)
 parser.add_argument('--cp_interval', '-cp_interval', help='interval for checkpoint saving', default=20, type=int)
 parser.add_argument('--n_z', '-n_z', help='size of the each one of the parameters [mean,stddev] in the latent space', default=8, type=int)
-parser.add_argument('--gpu', '-gpu', help='gpu number to train on', default='0', type=str)
+parser.add_argument('--gpu', '-gpu', help='gpu number to train on', default='1', type=str)
 args = parser.parse_args()
 
 @tf.function
@@ -33,9 +33,17 @@ def compute_loss(y, y_pred, means, stddev):
 @tf.function
 def train(images, c_points):
     with tf.GradientTape() as tape:
-        predictions, means, stddev, _ = model(images, c_points)
+        # add noise
+        c_points = c_points + tf.random.normal(shape=c_points.shape, mean=0.0, stddev=0.1)
+
+        # inference
+        predictions, means, stddev, _ = model(tf.concat([c_points, images], axis=-1)) #images.shape=[,10201]
+
+        # compute loss
         recon_loss, kl_loss = compute_loss(c_points, predictions, means, stddev)
         loss = recon_loss + kl_loss
+
+    # compute step
     gradients = tape.gradient(loss, model.trainable_variables)
     optimizer.apply_gradients(zip(gradients, model.trainable_variables))
 
@@ -45,7 +53,10 @@ def train(images, c_points):
 # tf function to test
 @tf.function
 def test(images, c_points):
-    predictions, means, stddev, _ = model(images, c_points)
+    # inference
+    predictions, means, stddev, _ = model(tf.concat([c_points, images], axis=-1)) #images.shape=[,10201]
+
+    # compute loss
     recon_loss, kl_loss = compute_loss(c_points, predictions, means, stddev)
 
     test_rec_loss(recon_loss)
@@ -95,3 +106,4 @@ for epoch in range(args.epochs):
     if (epoch+1) % args.cp_interval == 0 and epoch > 0:
         print('Saving weights to {}'.format(args.output_dir))
         model.save_weights(os.path.join(args.output_dir, "vaemodel{}.ckpt".format(epoch+1)))
+        model.save(os.path.join(args.output_dir, 'model_saved'))

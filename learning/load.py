@@ -94,10 +94,15 @@ def load_data(data_file, num_imgs=None, batch_size=32, test_sample=False):
         cs_np = cs_np[:num_imgs,:]
 
     if test_sample:
-        return imgs_np[:1,:], cs_np[:1,:]
+        return imgs_np[-1:,:], cs_np[-1:,:]
+
+    # decide test split
+    test_split = int(imgs_np.shape[0] * 0.3) # TODO: Note that the obstacles are already shuffled, but the trajectories are not!
+
+    # add noise
+    #imgs_np[:-test_split,:] = imgs_np[:-test_split,:] + np.random.normal(loc=imgs_np[:-test_split,:].mean(), scale=imgs_np[:-test_split,:].std()/10, size=imgs_np[:-test_split,:].shape)
 
     # convert to tf format dataset and prepare batches
-    test_split = int(imgs_np.shape[0] * 0.1) # TODO: Note that the obstacles are already shuffled, but the trajectories are not!
     train_ds = tf.data.Dataset.from_tensor_slices((imgs_np[:-test_split,:], cs_np[:-test_split,:])).shuffle(len(imgs_np[:-test_split,:])).batch(batch_size)
     test_ds = tf.data.Dataset.from_tensor_slices((imgs_np[-test_split:,:], cs_np[-test_split:,:])).shuffle(len(imgs_np[-test_split:,:])).batch(batch_size)
     return train_ds, test_ds
@@ -105,8 +110,8 @@ def load_data(data_file, num_imgs=None, batch_size=32, test_sample=False):
 
 if __name__ == '__main__':
 
-    os.environ["CUDA_VISIBLE_DEVICES"]="0"
+    os.environ["CUDA_VISIBLE_DEVICES"]="1"
     os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'false'
 
-    data_dir = 'learning/data'
-    prepare_data(data_dir, scale=50, data_len=50)
+    data_dir = 'learning/data10k'
+    prepare_data(data_dir, scale=50, data_len=20000)
