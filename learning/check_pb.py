@@ -21,9 +21,10 @@ loaded_model = tf.keras.models.load_model(args.model_path)
 
 # load sample image and ones as c-space point
 img = np.expand_dims(cv2.imread('sample.png', cv2.IMREAD_GRAYSCALE).reshape(-1),axis=0) / 255.0
-c_point = np.expand_dims(np.ones((5)), axis=0)
-inputs = np.concatenate([c_point, img], axis=-1)
+#c_point = np.expand_dims(np.ones((5)), axis=0)
+z_point = np.expand_dims(np.ones((8)), axis=0)
+inputs = np.concatenate([z_point, img], axis=-1)
 
 # print output
 y = loaded_model(tf.convert_to_tensor(inputs, dtype=tf.float32))
-print(y[0].numpy()[0])
+print(y[0].numpy())
