@@ -32,35 +32,29 @@ def prepare_data(data_dir, scale=50, data_len=100):
 
         # load inspection points csv
         inspection_points = (pd.read_csv(files_list['inspection_points']) * scale).round(0).astype(int)
+        # draw inspection points on the image
+        inspection_points.apply(lambda x: cv2.rectangle(img, (x['x'], x['y']), (x['x'], x['y']), 100, -1), axis=1)
 
         # load configuration space csv
         cspace_df = pd.read_csv(files_list['configurations'], delimiter=' ', header=None).drop(columns=[0,6])
-
-        # create a dictionary with inspection points indices for each vertex index
-        inspection_points_per_vertex = {}
-        with open(files_list['vertex'],'r') as f:
-            for line in f:
-                line = line.split(' ')[:-1]
-                inspection_points_per_vertex[int(line[0])] = [int(x) for x in line[3:]]
 
         # drop already seen points from inspection points
         with open(files_list['results'],'r') as f:
             for line in f:
                 vertices_idxs = [int(x) for x in line.split(' ')[1:-1]]
-                for j in range(1,len(vertices_idxs)):
-                    img_copy = img.copy()
+                img_copy = img.copy()
+                for j in range(0,len(vertices_idxs)-1):
+                    
+                    # compute end-point for vertex
+                    ee_val = np.rint(compute_ee(cspace_df.iloc[j].to_numpy()) * scale).astype(int)
 
-                    # get union of inspected vertices indices
-                    visited_idxs = vertices_idxs[:j]
-                    visited_inspection_points = [inspection_points_per_vertex[x] for x in vertices_idxs]
-                    visited_inspection_points = list(set().union(*visited_inspection_points))
+                    # draw 
+                    cv2.rectangle(img_copy, (ee_val[0], ee_val[1]), (ee_val[0], ee_val[1]), 150, -1)
 
-                    # draw unseen inspection points on the image
-                    inspection_points.drop(index=visited_inspection_points).apply(lambda x: cv2.rectangle(img_copy, (x['x'], x['y']), (x['x'], x['y']), 100, -1), axis=1)
-
+                    # add sample (x,y)
                     imgs.append(np.expand_dims(img_copy, axis=0))
-                    c_points.append(np.expand_dims(cspace_df.iloc[j].to_numpy(), axis=0))
-        
+                    c_points.append(np.expand_dims(cspace_df.iloc[j+1].to_numpy(), axis=0))
+
         if i%10 == 0:
             print(f'Created images: {i}')
 
@@ -77,6 +71,20 @@ def prepare_data(data_dir, scale=50, data_len=100):
     with h5py.File(os.path.join(data_dir,"data.h5"), "w") as f:
         f.create_dataset("images", data=imgs_np, dtype=imgs_np.dtype)
         f.create_dataset("cpoints", data=cs_np, dtype=cs_np.dtype)
+
+
+def compute_ee(angles):
+
+    origin = [1.0, 0.0]
+    link_lengths = [0.2, 0.1, 0.2, 0.3, 0.1]
+
+    end_point = origin.copy()
+    for i, angle in enumerate(angles):
+        end_point[0] += link_lengths[i] * np.cos(angle)
+        end_point[1] += link_lengths[i] * np.sin(angle)
+
+    return np.array(end_point)
+
 
 
 def load_data(data_file, num_imgs=None, batch_size=32, test_sample=False):
@@ -113,5 +121,5 @@ if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"]="1"
     os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'false'
 
-    data_dir = 'learning/data10k'
-    prepare_data(data_dir, scale=50, data_len=20000)
+    data_dir = 'build/data10k'
+    prepare_data(data_dir, scale=50, data_len=15000)
