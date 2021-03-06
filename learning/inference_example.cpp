@@ -7,11 +7,57 @@
 #include <math.h>
 #include <iostream>
 #include <iomanip>
+#include <visilibity.hpp>
 
 // compilation command:
 // g++ -ggdb inference_example.cpp -ltensorflow -o inference_example `pkg-config --cflags --libs opencv`
 
+// compilation command with visilibity:
+// g++ -ggdb inference_example.cpp -I /home/deanz/Documents/Github/VisiLibity1/src /home/deanz/Documents/Github/VisiLibity1/src/visilibity.cpp /home/deanz/Documents/Github/VisiLibity1/src/visilibity.hpp -ltensorflow -o inference_example `pkg-config --cflags --libs opencv`
+
+
 void NoOpDeallocator(void* data, size_t a, void* b) {}
+
+float* ComputeEndEffector(float* data) {
+
+    float origin[] = {1.0, 0.0};
+    float link_lengths[] = {0.2, 0.1, 0.2, 0.3, 0.1};
+
+	float x, y;
+	x = origin[0];
+	y = origin[1];
+    int num_links = 5;
+	for (int i = 0; i < num_links; ++i) {
+		x += link_lengths[i] * std::cos(data[i]);
+		y += link_lengths[i] * std::sin(data[i]);
+	}
+    
+    float* ee_val = new float[2]();
+    ee_val[0] = x;
+    ee_val[1] = y;
+    return ee_val;
+}
+
+std::vector<cv::Point> ComputeVisibilityTriangle(float* ee_val, float ee_orientation) {
+
+    int maxWall = 200;
+    double fov = M_PI_2;
+    int scale = 50;
+    float x1 = scale * ee_val[0] + maxWall * std::cos(ee_orientation + 0.5 * fov);
+    float y1 = scale * ee_val[1] + maxWall * std::sin(ee_orientation + 0.5 * fov);
+    float x2 = scale * ee_val[0] + maxWall * std::cos(ee_orientation - 0.5 * fov);
+    float y2 = scale * ee_val[1] + maxWall * std::sin(ee_orientation - 0.5 * fov);
+
+    std::vector<cv::Point> points;
+    // cv::Point((int)round(ee_val[0]*scale), (int)round(ee_val[1]*scale))
+    // points = { cv::Point((int)round(ee_val[0]*scale), (int)round(ee_val[1]*scale)),  cv::Point((int)round(x1), (int)round(y1)), 
+    //         cv::Point((int)round(x2), (int)round(y2)) };
+    points.push_back(cv::Point((int)round(ee_val[0]*scale), (int)round(ee_val[1]*scale)));
+    points.push_back(cv::Point((int)round(x2), (int)round(y2)));
+    points.push_back(cv::Point((int)round(x1), (int)round(y1)));
+
+    return points;
+}
 
 std::vector<std::vector<float>> getInspectionPoints(){
 
@@ -55,7 +101,7 @@ float RandomNum(const float min, const float max) {
     return min + ((float)rand()/RAND_MAX) * (max - min);
 }
 
-std::vector<std::vector<float>> getRandomObstacles(const int num_rects=10, const float max_size=0.2) {
+std::vector<std::vector<float>> getRandomObstacles(int num_rects=1, const float max_size=0.2) {
 
     float width = 2.0;
     float length = 2.0;
@@ -75,7 +121,6 @@ std::vector<std::vector<float>> getRandomObstacles(const int num_rects=10, const
         float length = RandomNum(0, max_size);
         float x = RandomNum(xmin_ + 0.5*width, xmax_ - 0.5*width);
         float y = RandomNum(ymin_ + 0.5*length, ymax_ - 0.5*length);
-
         x1.push_back(x);
         y1.push_back(y);
         x2.push_back(x+width);
@@ -87,9 +132,82 @@ std::vector<std::vector<float>> getRandomObstacles(const int num_rects=10, const
     return obstacles;
 }
 
+VisiLibity::Environment prepareEnvironment(std::vector<std::vector<float>> obstacles, int num_rects, double scale=50) {
+
+    double end_env = 2.0 * scale;
+
+    //std::vector<VisiLibity::Polygon> envPolygons;
+
+    //define polygon for walls
+    std::vector<VisiLibity::Point> wallsPoints;
+    wallsPoints.push_back(VisiLibity::Point(0.0, 0.0));
+    wallsPoints.push_back(VisiLibity::Point(end_env, 0.0));
+    wallsPoints.push_back(VisiLibity::Point(end_env, end_env));
+    wallsPoints.push_back(VisiLibity::Point(0.0, end_env));
+    VisiLibity::Polygon wallsPolygon(wallsPoints);
+    //envPolygons.push_back(wallsPolygon);
+    
+    VisiLibity::Environment environment(wallsPolygon);
+
+    /*
+    // define polygons for obstacles
+    for (std::vector<std::vector<float>>::iterator it_obs = obstacles.begin(); it_obs != obstacles.end(); it_obs++ ) {
+        std::vector<VisiLibity::Point> obstaclePoints;
+        obstaclePoints.push_back(VisiLibity::Point((*it_obs)[0]*scale, (*it_obs)[1]*scale));
+        obstaclePoints.push_back(VisiLibity::Point((*it_obs)[2]*scale, (*it_obs)[1]*scale));
+        obstaclePoints.push_back(VisiLibity::Point((*it_obs)[2]*scale, (*it_obs)[3]*scale));
+        obstaclePoints.push_back(VisiLibity::Point((*it_obs)[0]*scale, (*it_obs)[3]*scale));
+        std::cout << "Obstacle Point 1: " << (*it_obs)[0]*scale << ", " << (*it_obs)[1]*scale << std::endl;
+        std::cout << "Obstacle Point 2: " << (*it_obs)[2]*scale << ", " << (*it_obs)[1]*scale << std::endl;
+        std::cout << "Obstacle Point 3: " << (*it_obs)[2]*scale << ", " << (*it_obs)[3]*scale << std::endl;
+        std::cout << "Obstacle Point 4: " << (*it_obs)[0]*scale << ", " << (*it_obs)[3]*scale << std::endl;
+
+        VisiLibity::Polygon obstaclePolygon(obstaclePoints);
+        //envPolygons.push_back(obstaclePolygon);
+        environment.add_hole(obstaclePolygon);
+    }
+    */
+
+
+    // define polygons for obstacles
+    for (int i=0; i<num_rects; i++ ) {
+        std::vector<VisiLibity::Point> obstaclePoints;
+        obstaclePoints.push_back(VisiLibity::Point(obstacles[0][i]*scale, obstacles[1][i]*scale));
+        obstaclePoints.push_back(VisiLibity::Point(obstacles[2][i]*scale, obstacles[1][i]*scale));
+        obstaclePoints.push_back(VisiLibity::Point(obstacles[2][i]*scale, obstacles[3][i]*scale));
+        obstaclePoints.push_back(VisiLibity::Point(obstacles[0][i]*scale, obstacles[3][i]*scale));
+        //std::cout << "Obstacle Point 1: " << (*it_obs)[0]*scale << ", " << (*it_obs)[1]*scale << std::endl;
+        //std::cout << "Obstacle Point 2: " << (*it_obs)[2]*scale << ", " << (*it_obs)[1]*scale << std::endl;
+        //std::cout << "Obstacle Point 3: " << (*it_obs)[2]*scale << ", " << (*it_obs)[3]*scale << std::endl;
+        //std::cout << "Obstacle Point 4: " << (*it_obs)[0]*scale << ", " << (*it_obs)[3]*scale << std::endl;
+
+        VisiLibity::Polygon obstaclePolygon(obstaclePoints);
+        //envPolygons.push_back(obstaclePolygon);
+        environment.add_hole(obstaclePolygon);
+    }
+
+    return environment;
+}
+
+std::vector<std::vector<cv::Point>> savePolygonPoints(VisiLibity::Visibility_Polygon visPolygon) {
+
+    std::vector<cv::Point> end_points;
+
+    for (int i=0; i<visPolygon.n(); i++) {
+        cv::Point point_i((int)round(visPolygon[i].x()), (int)round(visPolygon[i].y()));
+        std::cout << "Point " << i << ": " << (int)round(visPolygon[i].x()) << ", " << (int)round(visPolygon[i].y()) << std::endl;
+        end_points.push_back(point_i);
+    }
+
+    std::vector<std::vector<cv::Point>> end_points_vec = {end_points};
+    return end_points_vec;
+}
+
 int main() {
 
-    srand(2);
+    srand(3);
+    double epsilon = 0.000000001;
+    int num_rects = 5;
 
     printf("Hello from TensorFlow C library version %s\n", TF_Version());
 
@@ -101,7 +219,7 @@ int main() {
     TF_SessionOptions* SessionOpts = TF_NewSessionOptions();
     TF_Buffer* RunOpts = NULL;
 
-    const char* saved_model_dir = "saved_model/";
+    const char* saved_model_dir = "saved_model_decoder/";
     const char* tags = "serve"; // default model serving tag; can change in future
     int ntags = 1;
 
@@ -146,34 +264,78 @@ int main() {
 
     // get obstacles and inpection points
     std::vector<std::vector<float>> points = getInspectionPoints();
-    std::vector<std::vector<float>> obstacles = getRandomObstacles();
+    std::vector<std::vector<float>> obstacles = getRandomObstacles(num_rects);
 
     // create image
     int scale = 50;
     cv::Mat input_mat(cv::Size(101, 101), CV_8UC1);
     input_mat = 0;
+
+
+    // prepare input tensor
+    int ndims = 2;
+    int n_z = 8;
+    int c_dim = 5;
+    int input_size = 10209;
+    int64_t dims[] = {1,input_size};
+    float data[input_size];
+
+
+    float c_point[c_dim] = {0.812139, -0.083430, -0.847835, 0.427945, 1.25944};
+    float* ee_val = ComputeEndEffector(c_point);
+    float ee_orientation = 0.0;
+    for (int i=0; i<c_dim; i++) {
+        ee_orientation += c_point[i];
+    }
+    //std::cout << std::fixed << std::setprecision(16) << "ee_orientation: " << ee_orientation << std::endl;
+    //cv::rectangle(input_mat, cv::Point((int)round(ee_val[0]*scale), (int)round(ee_val[1]*scale)), cv::Point((int)round(ee_val[0]*scale), (int)round(ee_val[1]*scale)), cv::Scalar(150));
+
+    std::vector<cv::Point> visibilityTriangle = ComputeVisibilityTriangle(ee_val, ee_orientation);
+    for (int i=0; i<3; i++) {
+        std::cout << "Point "<< i << ": " << visibilityTriangle[i] << std::endl;
+    }
+    std::vector<std::vector<cv::Point>> visTriangles = {visibilityTriangle};
+    //const cv::Point* visPoints = {visibilityTriangle[0], visibilityTriangle[1], visibilityTriangle[2]};
+    //cv::fillConvexPoly(input_mat, visibilityTriangle, cv::Scalar(150));
+
+    // get environment from obstacles
+    VisiLibity::Environment environment = prepareEnvironment(obstacles, num_rects);
+    std::vector<VisiLibity::Point> observerPoints = {VisiLibity::Point(ee_val[0]*scale, ee_val[1]*scale)};
+    VisiLibity::Guards observer(observerPoints);
+    observer.snap_to_boundary_of(environment, epsilon);
+    observer.snap_to_vertices_of(environment, epsilon);
+    VisiLibity::Visibility_Polygon visilibityPolygon(observer[0], environment, epsilon);
+    std::vector<std::vector<cv::Point>> visilibityPoints = savePolygonPoints(visilibityPolygon);
+
+    cv::fillPoly(input_mat, visilibityPoints, cv::Scalar(150));
+
+    cv::Mat mask_visibility(cv::Size(101, 101), CV_8UC1);
+    mask_visibility = 0;
+    cv::fillPoly(mask_visibility, visTriangles, cv::Scalar(150));
+
+
+    cv::bitwise_and(input_mat, mask_visibility, input_mat);
+
+
     for (int i=0; i<10; i++) {
         cv::rectangle(input_mat, cv::Point((int)round(obstacles[0][i]*scale), (int)round(obstacles[1][i]*scale)), cv::Point((int)round(obstacles[2][i]*scale), (int)round(obstacles[3][i]*scale)), cv::Scalar(255), -1);
     }
     for (int i=0; i<400; i++) {
         cv::rectangle(input_mat, cv::Point((int)round(points[0][i]*scale), (int)round(points[1][i]*scale)), cv::Point((int)round(points[0][i]*scale), (int)round(points[1][i]*scale)), cv::Scalar(100));
     }
-    //cv::imwrite("sample.png", input_mat);
+    cv::rectangle(input_mat, cv::Point((int)round(ee_val[0]*scale), (int)round(ee_val[1]*scale)), cv::Point((int)round(ee_val[0]*scale), (int)round(ee_val[1]*scale)), cv::Scalar(0));
+
+    cv::imwrite("sample.png", input_mat);
+
 
     // flatten image
     uint totalElements = input_mat.total()*input_mat.channels(); // Note: image.total() == rows*cols.
     cv::Mat flat = input_mat.reshape(1, totalElements); // 1xN mat of 1 channel, O(1) operation
-
-    // prepare input tensor
-    int ndims = 2;
-    int input_size = 10206;
-    int64_t dims[] = {1,input_size};
-    float data[input_size];
-    for (int i=0;i<5;i++) {
+    for (int i=0;i<n_z;i++) {
         data[i] = 1.0;
-    }    
-    for (int i=5;i<input_size;i++) {
-        data[i] = (int)(flat.at<uchar>(0, i-5)) / 255.0;
+    }
+    for (int i=n_z;i<input_size;i++) {
+        data[i] = (int)(flat.at<uchar>(0, i-n_z)) / 255.0;
     }
 
 	// open data file
