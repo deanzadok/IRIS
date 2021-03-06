@@ -8,8 +8,8 @@ import tensorflow as tf
 import cv2
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model_path', '-model_path', help='path to model', default='learning/results/test_h5/model_saved', type=str)
-parser.add_argument('--gpu', '-gpu', help='gpu number to train on', default='1', type=str)
+parser.add_argument('--model_path', '-model_path', help='path to model', default='learning/test_h5/model_saved', type=str)
+parser.add_argument('--gpu', '-gpu', help='gpu number to train on', default='0', type=str)
 args = parser.parse_args()
 
 # allow growth is possible using an env var in tf2.0

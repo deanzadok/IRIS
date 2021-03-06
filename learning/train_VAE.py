@@ -8,14 +8,14 @@ from models import VAEModel
 from load import load_data
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--data_file', '-data_file', help='path h5 data file', default='learning/data10k/data.h5', type=str)
+parser.add_argument('--data_dir', '-data_dir', help='path h5 data dir', default='build/data10k', type=str)
 parser.add_argument('--output_dir', '-output_dir', help='path to output folder', default='learning/test_h5', type=str)
 parser.add_argument('--batch_size', '-batch_size', help='number of samples in one minibatch', default=32, type=int)
-parser.add_argument('--num_imgs', '-num_imgs', help='number of images to train on', default=3000, type=int)
+parser.add_argument('--num_imgs', '-num_imgs', help='number of images to train on', default=100000, type=int)
 parser.add_argument('--epochs', '-epochs', help='number of epochs to train the model', default=100, type=int)
 parser.add_argument('--cp_interval', '-cp_interval', help='interval for checkpoint saving', default=20, type=int)
 parser.add_argument('--n_z', '-n_z', help='size of the each one of the parameters [mean,stddev] in the latent space', default=8, type=int)
-parser.add_argument('--gpu', '-gpu', help='gpu number to train on', default='1', type=str)
+parser.add_argument('--gpu', '-gpu', help='gpu number to train on', default='0', type=str)
 args = parser.parse_args()
 
 @tf.function
@@ -63,11 +63,11 @@ def test(images, c_points):
     test_kl_loss(kl_loss)
 
 # allow growth is possible using an env var in tf2.0
-#os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
+os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'true'
 os.environ["CUDA_VISIBLE_DEVICES"]=args.gpu
 
 # get train and test datasets
-train_ds, test_ds = load_data(data_file=args.data_file, num_imgs=args.num_imgs, batch_size=args.batch_size)
+train_ds, test_ds = load_data(data_dir=args.data_dir, num_imgs=args.num_imgs, batch_size=args.batch_size)
 
 # create model, loss and optimizer
 model = VAEModel(n_z=args.n_z)
