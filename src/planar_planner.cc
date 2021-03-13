@@ -85,7 +85,6 @@ void PlanarPlanner::BuildAndSaveInspectionGraph(const String file_name, const Id
     problem_def->setGoal(goal);
     auto obj = ob::OptimizationObjectivePtr(new ob::PathLengthOptimizationObjective(space_info_));
     problem_def->setOptimizationObjective(obj);
-
     // Planner.
     auto planner = ob::PlannerPtr(new og::RRG(space_info_));
     planner->as<og::RRG>()->setRange(step_size_);
@@ -93,6 +92,16 @@ void PlanarPlanner::BuildAndSaveInspectionGraph(const String file_name, const Id
     planner->as<og::RRG>()->setKNearest(k_nearest_);
     planner->setProblemDefinition(problem_def);
     planner->setup();
+
+    // load zb-features 
+    Vec2 robot_origin = robot_->getOrigin();
+    Idx num_links = robot_->getNumLinks();
+    RealNum robot_fov = robot_->getFOV();
+    std::vector<RealNum> robot_links = robot_->getLinks();
+    std::vector<Point> targets = env_->GetInspectionPoints();
+    std::vector<Rectangle> obstacles = env_->GetObstacles();
+    std::vector<RealNum> dimensions = env_->GetDimensions();
+    planner->as<og::RRG>()->setFeatures(targets, obstacles, dimensions, robot_origin, num_links, robot_fov, robot_links);
 
     // Build graph incrementally.
     auto num_targets = env_->NumTargets();

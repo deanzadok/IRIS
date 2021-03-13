@@ -50,6 +50,9 @@
 #include "ompl/tools/config/SelfConfig.h"
 #include "ompl/util/GeometricEquations.h"
 
+
+void NoOpDeallocator(void* data, size_t a, void* b) {}
+
 ompl::geometric::RRG::RRG(const base::SpaceInformationPtr &si)
   : base::Planner(si, "RRG")
 {
@@ -89,6 +92,12 @@ ompl::geometric::RRG::RRG(const base::SpaceInformationPtr &si)
 
 ompl::geometric::RRG::~RRG()
 {
+    // free TF memory
+    TF_DeleteGraph(tfGraph);
+    TF_DeleteSession(tfSession, tfStatus);
+    TF_DeleteSessionOptions(tfSessionOpts);
+    TF_DeleteStatus(tfStatus);
+
     freeMemory();
 }
 
@@ -148,6 +157,56 @@ void ompl::geometric::RRG::setup()
 
     // Calculate some constants:
     calculateRewiringLowerBounds();
+
+    // initiate tensorflow model
+    tfGraph = TF_NewGraph();
+    tfStatus = TF_NewStatus();
+
+    tfSessionOpts = TF_NewSessionOptions();
+    tfRunOpts = NULL;
+
+    const char* saved_model_dir = "saved_model_decoder/";
+    const char* tags = "serve"; // default model serving tag; can change in future
+    int ntags = 1;
+
+    tfSession = TF_LoadSessionFromSavedModel(tfSessionOpts, tfRunOpts, saved_model_dir, &tags, ntags, tfGraph, NULL, tfStatus);
+    if(TF_GetCode(tfStatus) == TF_OK)
+    {
+        printf("TF_LoadSessionFromSavedModel OK\n");
+    }
+    else
+    {
+        printf("%s",TF_Message(tfStatus));
+    }
+
+    // tf input tensor
+    tfNumInputs = 1;
+    tfInput = (TF_Output*)malloc(sizeof(TF_Output) * tfNumInputs);
+
+    TF_Output t0 = {TF_GraphOperationByName(tfGraph, "serving_default_input_1"), 0};
+    if(t0.oper == NULL)
+        printf("ERROR: Failed TF_GraphOperationByName serving_default_input_1\n");
+    else
+	    printf("TF_GraphOperationByName serving_default_input_1 is OK\n");
+    tfInput[0] = t0;
+
+    // tf output tensor
+    tfNumOutputs = 1;
+    tfOutput = (TF_Output*)malloc(sizeof(TF_Output) * tfNumOutputs);
+
+    TF_Output t2 = {TF_GraphOperationByName(tfGraph, "StatefulPartitionedCall"), 0};
+    if(t2.oper == NULL)
+        printf("ERROR: Failed TF_GraphOperationByName StatefulPartitionedCall\n");
+    else	
+	printf("TF_GraphOperationByName StatefulPartitionedCall is OK\n");
+    tfOutput[0] = t2;
+
+    // allocate data for inputs & outputs
+    tfInputValues = (TF_Tensor**)malloc(sizeof(TF_Tensor*)*tfNumInputs);
+    tfOutputValues = (TF_Tensor**)malloc(sizeof(TF_Tensor*)*tfNumOutputs);
+
+    // sampling counter
+    counter_sample_ = 0;
 }
 
 void ompl::geometric::RRG::clear()
@@ -169,6 +228,73 @@ void ompl::geometric::RRG::clear()
     prunedCost_ = base::Cost(std::numeric_limits<double>::quiet_NaN());
     prunedMeasure_ = 0.0;
 }
+
+void ompl::geometric::RRG::setFeatures(std::vector<Point> targets, std::vector<Rectangle> obstacles, std::vector<RealNum> dimensions, Vec2 robot_origin, Idx num_links, RealNum robot_fov, std::vector<RealNum> robot_links) {
+
+    // set features properties
+    targets_ = targets;
+    obstacles_ = obstacles;
+    dimensions_ = dimensions;
+    origin_ = robot_origin;
+    num_links_ = num_links;
+    fov_ = robot_fov;
+    links_ = robot_links;
+    epsilon_ = 0.000000001;
+
+    // create image matrix
+    input_mat = new cv::Mat(cv::Size(int(dimensions_[0] * metascale_ + 1), int(dimensions_[1] * metascale_ + 1)), CV_8UC1);
+    *input_mat = 0;
+
+    // get zb-environment from zb-obstacles
+    environment = prepareEnvironment(obstacles);
+    
+    // prepare input tensor
+    ndims = 2;
+    n_z = 8;
+    input_size = 10209;
+    int64_t dims[] = {1,input_size};
+    data = new float [input_size];
+}
+
+VisiLibity::Environment ompl::geometric::RRG::prepareEnvironment(std::vector<Rectangle> obstacles) {
+
+    double end_env_x = dimensions_[0] * metascale_;
+    double end_env_y = dimensions_[1] * metascale_;
+
+    //define polygon for walls
+    std::vector<VisiLibity::Point> wallsPoints;
+    wallsPoints.push_back(VisiLibity::Point(0.0, 0.0));
+    wallsPoints.push_back(VisiLibity::Point(end_env_x, 0.0));
+    wallsPoints.push_back(VisiLibity::Point(end_env_x, end_env_y));
+    wallsPoints.push_back(VisiLibity::Point(0.0, end_env_y));
+    VisiLibity::Polygon wallsPolygon(wallsPoints);
+    
+    VisiLibity::Environment environment(wallsPolygon);
+
+    // define polygons for obstacles
+    for (int i=0; i<obstacles.size(); i++ ) {
+        std::vector<VisiLibity::Point> obstaclePoints;
+        obstaclePoints.push_back(VisiLibity::Point(obstacles[i].LowerLeft().coeff(0,0)*metascale_, obstacles[i].LowerLeft().coeff(1,0)*metascale_));
+        obstaclePoints.push_back(VisiLibity::Point(obstacles[i].LowerRight().coeff(0,0)*metascale_, obstacles[i].LowerRight().coeff(1,0)*metascale_));
+        obstaclePoints.push_back(VisiLibity::Point(obstacles[i].UpperRight().coeff(0,0)*metascale_, obstacles[i].UpperRight().coeff(1,0)*metascale_));
+        obstaclePoints.push_back(VisiLibity::Point(obstacles[i].UpperLeft().coeff(0,0)*metascale_, obstacles[i].UpperLeft().coeff(1,0)*metascale_));
+
+        // obstaclePoints.push_back(VisiLibity::Point(obstacles[0][i]*metascale_, obstacles[1][i]*metascale_));
+        // obstaclePoints.push_back(VisiLibity::Point(obstacles[2][i]*metascale_, obstacles[1][i]*metascale_));
+        // obstaclePoints.push_back(VisiLibity::Point(obstacles[2][i]*metascale_, obstacles[3][i]*metascale_));
+        // obstaclePoints.push_back(VisiLibity::Point(obstacles[0][i]*metascale_, obstacles[3][i]*metascale_));
+        //std::cout << "Obstacle Point 1: " << (*it_obs)[0]*scale << ", " << (*it_obs)[1]*scale << std::endl;
+        //std::cout << "Obstacle Point 2: " << (*it_obs)[2]*scale << ", " << (*it_obs)[1]*scale << std::endl;
+        //std::cout << "Obstacle Point 3: " << (*it_obs)[2]*scale << ", " << (*it_obs)[3]*scale << std::endl;
+        //std::cout << "Obstacle Point 4: " << (*it_obs)[0]*scale << ", " << (*it_obs)[3]*scale << std::endl;
+
+        VisiLibity::Polygon obstaclePolygon(obstaclePoints);
+        environment.add_hole(obstaclePolygon);
+    }
+
+    return environment;
+}
+
 
 ompl::base::PlannerStatus ompl::geometric::RRG::solve(const base::PlannerTerminationCondition &ptc)
 {
@@ -1238,6 +1364,10 @@ void ompl::geometric::RRG::allocSampler()
     // No else
 }
 
+
+
+
+
 bool ompl::geometric::RRG::sampleUniform(base::State *statePtr)
 {
     // Use the appropriate sampler
@@ -1252,12 +1382,155 @@ bool ompl::geometric::RRG::sampleUniform(base::State *statePtr)
     else
     {
         // Simply return a state from the regular sampler
-        sampler_->sampleUniform(statePtr);
+        //sampler_->sampleUniform(statePtr);
+
+        updateConditionImage(statePtr);
+        
+        sampleAI(statePtr);
+
 
         // Always true
         return true;
     }
 }
+
+void ompl::geometric::RRG::updateConditionImage(base::State *statePtr) {
+
+    // compute end effector position
+    float* ee_val = computeEndEffector(statePtr);
+    std::vector<cv::Point> visibilityTriangle = computeVisibilityTriangle(ee_val);
+    std::vector<std::vector<cv::Point>> visTriangles = {visibilityTriangle};
+
+    // setup observer
+    std::vector<VisiLibity::Point> observerPoints = {VisiLibity::Point(ee_val[0]*metascale_, ee_val[1]*metascale_)};
+    VisiLibity::Guards observer(observerPoints);
+    observer.snap_to_boundary_of(environment, epsilon_);
+    observer.snap_to_vertices_of(environment, epsilon_);
+
+    // create visibility polygon
+    VisiLibity::Visibility_Polygon visilibityPolygon(observer[0], environment, epsilon_);
+    std::vector<std::vector<cv::Point>> visilibityPoints = savePolygonPoints(visilibityPolygon);
+    cv::Mat mask_visibility_all(cv::Size(101, 101), CV_8UC1);
+    mask_visibility_all = 0;
+    cv::fillPoly(mask_visibility_all, visilibityPoints, cv::Scalar(150));
+
+    // create mask for visibility FOV and merge them
+    cv::Mat mask_visibility(cv::Size(101, 101), CV_8UC1);
+    mask_visibility = 0;
+    cv::fillPoly(mask_visibility, visTriangles, cv::Scalar(150));
+    cv::bitwise_and(mask_visibility_all, mask_visibility, mask_visibility_all);
+    cv::bitwise_or(*input_mat, mask_visibility_all, *input_mat);
+
+    // draw obstacles and points back
+    for (int i=0; i<obstacles_.size(); i++) {
+        cv::rectangle(*input_mat, cv::Point((int)round(obstacles_[i].LowerLeft().coeff(0,0)*metascale_), (int)round(obstacles_[i].LowerLeft().coeff(1,0)*metascale_)), cv::Point((int)round(obstacles_[i].UpperRight().coeff(0,0)*metascale_), (int)round(obstacles_[i].UpperRight().coeff(1,0)*metascale_)), cv::Scalar(255), -1);
+    }
+    for (int i=0; i<targets_.size(); i++) {
+        cv::rectangle(*input_mat, cv::Point((int)round(targets_[i].coeff(0,0)*metascale_), (int)round(targets_[i].coeff(1,0)*metascale_)), cv::Point((int)round(targets_[i].coeff(0,0)*metascale_), (int)round(targets_[i].coeff(1,0)*metascale_)), cv::Scalar(100));
+    }
+
+    counter_sample_++;
+    cv::imwrite("sample_" + std::to_string(counter_sample_) + ".png", *input_mat);
+    //std::cout << "End effector x: " << ee_val[0] << ", y: " << ee_val[1] << std::endl;
+    
+    return;
+}
+
+void ompl::geometric::RRG::sampleAI(base::State *statePtr) {
+
+    int64_t dims[] = {1,input_size};
+
+    // flatten image
+    uint totalElements = (*input_mat).total()*(*input_mat).channels(); // Note: image.total() == rows*cols.
+    cv::Mat flat = (*input_mat).reshape(1, totalElements); // 1xN mat of 1 channel, O(1) operation
+    for (int i=0;i<n_z;i++) {
+        data[i] = 0.0;
+    }
+    for (int i=n_z;i<input_size;i++) {
+        data[i] = (float)(flat.at<uchar>(0, i-n_z)) / 255.0;
+    }
+
+    // prepare input
+    int ndata = sizeof(float)*input_size; // This is tricky, it number of bytes not number of element
+    TF_Tensor* int_tensor = TF_NewTensor(TF_FLOAT, dims, ndims, data, ndata, &NoOpDeallocator, 0);
+    if (int_tensor == NULL) {
+	    printf("ERROR: Failed TF_NewTensor\n");
+    }
+    
+    // run the Session
+    tfInputValues[0] = int_tensor;
+    TF_SessionRun(tfSession, NULL, tfInput, tfInputValues, tfNumInputs, tfOutput, tfOutputValues, tfNumOutputs, NULL, 0,NULL , tfStatus);
+
+    if(TF_GetCode(tfStatus) != TF_OK) {
+        printf("%s",TF_Message(tfStatus));
+    }
+
+    void* buff = TF_TensorData(tfOutputValues[0]);
+    float* offsets = (float*)buff;
+    std::cout << "Result Tensor :" << offsets[0] << ", " << offsets[1] << ", " << offsets[2] << ", " << offsets[3] << ", " << offsets[4] << std::endl;
+
+    for (int i=0; i<num_links_; i++) {
+        statePtr->as<ob::RealVectorStateSpace::StateType>()->values[i] = offsets[i];
+    }
+
+    return;
+}
+
+
+std::vector<std::vector<cv::Point>> ompl::geometric::RRG::savePolygonPoints(VisiLibity::Visibility_Polygon visPolygon) {
+
+    std::vector<cv::Point> end_points;
+
+    for (int i=0; i<visPolygon.n(); i++) {
+        cv::Point point_i((int)round(visPolygon[i].x()), (int)round(visPolygon[i].y()));
+        //std::cout << "Point " << i << ": " << (int)round(visPolygon[i].x()) << ", " << (int)round(visPolygon[i].y()) << std::endl;
+        end_points.push_back(point_i);
+    }
+
+    std::vector<std::vector<cv::Point>> end_points_vec = {end_points};
+    return end_points_vec;
+}
+
+std::vector<cv::Point> ompl::geometric::RRG::computeVisibilityTriangle(float* ee_val) {
+
+    int maxWall = 4 * metascale_;
+    float x1 = metascale_ * ee_val[0] + maxWall * std::cos(ee_val[2] + 0.5 * fov_);
+    float y1 = metascale_ * ee_val[1] + maxWall * std::sin(ee_val[2] + 0.5 * fov_);
+    float x2 = metascale_ * ee_val[0] + maxWall * std::cos(ee_val[2] - 0.5 * fov_);
+    float y2 = metascale_ * ee_val[1] + maxWall * std::sin(ee_val[2] - 0.5 * fov_);
+
+    std::vector<cv::Point> points;
+    // cv::Point((int)round(ee_val[0]*scale), (int)round(ee_val[1]*scale))
+    // points = { cv::Point((int)round(ee_val[0]*scale), (int)round(ee_val[1]*scale)),  cv::Point((int)round(x1), (int)round(y1)), 
+    //         cv::Point((int)round(x2), (int)round(y2)) };
+    points.push_back(cv::Point((int)round(ee_val[0]*metascale_), (int)round(ee_val[1]*metascale_)));
+    points.push_back(cv::Point((int)round(x2), (int)round(y2)));
+    points.push_back(cv::Point((int)round(x1), (int)round(y1)));
+
+    return points;
+}
+
+float* ompl::geometric::RRG::computeEndEffector(base::State *statePtr) {
+
+	float x = origin_.coeff(0,0);
+	float y = origin_.coeff(1,0);
+    float ee_orientation = 0.0;
+	for (int i = 0; i < num_links_; ++i) {
+		x += links_[i] * std::cos(statePtr->as<ob::RealVectorStateSpace::StateType>()->values[i]);
+		y += links_[i] * std::sin(statePtr->as<ob::RealVectorStateSpace::StateType>()->values[i]);
+        ee_orientation += statePtr->as<ob::RealVectorStateSpace::StateType>()->values[i];
+	}
+    
+    // end-effector position and orientation
+    float* ee_val = new float[3]();
+    ee_val[0] = x;
+    ee_val[1] = y;
+    ee_val[2] = ee_orientation;
+
+    return ee_val;
+}
+
+// start->as<ob::RealVectorStateSpace::StateType>()->values[i] = config[i];
 
 void ompl::geometric::RRG::calculateRewiringLowerBounds()
 {

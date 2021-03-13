@@ -279,4 +279,19 @@ bool PlanarEnvironment::Intersecting(const Line& l1, const Line& l2) const {
     return true;
 }
 
+std::vector<Rectangle> PlanarEnvironment::GetObstacles() {
+    
+    return obstacles_;
+}
+std::vector<Point> PlanarEnvironment::GetInspectionPoints() {
+
+    return targets_;
+}
+
+std::vector<RealNum> PlanarEnvironment::GetDimensions() {
+
+    std::vector<RealNum> dims = {xmax_, ymax_};
+    return dims;
+}
+
 }

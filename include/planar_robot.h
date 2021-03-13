@@ -31,6 +31,11 @@ public:
     std::vector<RealNum> StartConfig() const;
     void PrintConfig() const;
 
+    Vec2 getOrigin();
+    Idx getNumLinks();
+    RealNum getFOV();
+    std::vector<RealNum> getLinks();
+
 private:
     Vec2 origin_;
     Idx num_links_;

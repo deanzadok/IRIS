@@ -50,11 +50,20 @@
 #include <list>
 #include <ctime>
 #include <ompl/base/spaces/RealVectorStateSpace.h>
+#include "geo_shapes.h"
+#include <opencv2/opencv.hpp>
+#include <tensorflow/c/c_api.h>
+#include <visilibity.hpp>
 
 namespace ompl
 {
     namespace geometric
     {
+
+        using Point = Vec2;
+        using Line = geo::Line2D;
+        using Rectangle = geo::Rectangle;
+
         /**
            @anchor gRRTstar
            @par Short description
@@ -88,6 +97,22 @@ namespace ompl
             void getUncheckedEdges(base::PlannerData &data) const;
 
             base::PlannerStatus solve(const base::PlannerTerminationCondition &ptc) override;
+
+            // zb-functions
+
+            void setFeatures(std::vector<Point> targets, std::vector<Rectangle> obstacles, std::vector<RealNum> dimensions, Vec2 robot_origin, Idx num_links, RealNum robot_fov, std::vector<RealNum> robot_links);
+            
+            VisiLibity::Environment prepareEnvironment(std::vector<Rectangle> obstacles);
+
+            void updateConditionImage(base::State *statePtr);
+
+            float* computeEndEffector(base::State *statePtr);
+
+            std::vector<cv::Point> computeVisibilityTriangle(float* ee_val);
+
+            std::vector<std::vector<cv::Point>> savePolygonPoints(VisiLibity::Visibility_Polygon visPolygon);
+
+            void sampleAI(base::State *statePtr);
 
             void clear() override;
 
@@ -543,6 +568,41 @@ namespace ompl
             {
                 return std::to_string(bestCost().value());
             }
+        private:
+            int counter_sample_;
+
+            std::vector<Rectangle> obstacles_;
+            std::vector<Point> targets_;
+            Vec2 origin_;
+            Idx num_links_;
+            RealNum fov_;
+            std::vector<RealNum> links_;
+            std::vector<RealNum> dimensions_;
+            double epsilon_;
+            
+            VisiLibity::Environment environment;
+            int metascale_ = 50;
+            cv::Mat* input_mat;
+
+            // input tensor
+            int ndims;
+            int n_z;
+            int input_size;
+            float *data;
+
+            //tensorflow properties
+            TF_Graph* tfGraph;
+            TF_Status* tfStatus;
+            TF_SessionOptions* tfSessionOpts;
+            TF_Buffer* tfRunOpts;
+            TF_Session* tfSession;
+            int tfNumInputs;
+            int tfNumOutputs;
+
+            TF_Output* tfInput;
+            TF_Output* tfOutput;
+            TF_Tensor** tfInputValues;
+            TF_Tensor** tfOutputValues;
         };
     }
 }

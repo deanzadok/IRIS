@@ -16,9 +16,16 @@ add_library(io io_utils.cc)
 add_library(search graph_search.cc traceback_map.cc node.cc)
 target_link_libraries(search graph)
 
+
+set (VISILIBITY_SRC "/home/deanz/Documents/Github/VisiLibity1/src")
+include_directories(${VISILIBITY_SRC})
+
+set (VISILIBITY_SCPP "${VISILIBITY_SRC}/visilibity.cpp")
+set (VISILIBITY_SHPP "${VISILIBITY_SRC}/visilibity.hpp")
+
 # Planar robot related
 add_library(planar_env planar_environment.cc)
-add_library(planar_robot planar_robot.cc planar_planner.cc)
+add_library(planar_robot planar_robot.cc planar_planner.cc ${VISILIBITY_SCPP} ${VISILIBITY_SHPP} )
 target_link_libraries(planar_robot planar_env graph)
 
 # CRISP robot related.

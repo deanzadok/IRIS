@@ -113,5 +113,24 @@ void PlanarRobot::PrintConfig() const {
 	std::cout << std::endl;
 }
 
+Vec2 PlanarRobot::getOrigin() {
+
+	return origin_;
+}
+
+Idx PlanarRobot::getNumLinks() {
+
+	return num_links_;
+}
+
+RealNum PlanarRobot::getFOV() {
+
+	return fov_;
+}
+
+std::vector<RealNum> PlanarRobot::getLinks() {
+
+	return links_;
+}
 
 }

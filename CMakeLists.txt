@@ -72,6 +72,27 @@ else(OMPL_INCLUDE_DIRS AND OMPL_LIBRARIES)
     message("Headers/Libraries not specified for OMPL; not configuring OMPL projects.")
 endif(OMPL_INCLUDE_DIRS AND OMPL_LIBRARIES)
 
+# check for OpenCV
+find_package( OpenCV REQUIRED )
+include_directories(${OpenCV_INCLUDE_DIRS})
+
+# check for TensorFlow
+#find_package( TensorFlow REQUIRED )
+#find_package( CUDA 11 REQUIRED )
+#find_package(PkgConfig)
+#pkg_check_modules(TensorFlow REQUIRED tensorflow)
+
+#link_directories(${TensorFlow_LIBRARY_DIRS})
+#include_directories(${TensorFlow_INCLUDE_DIRS})
+
+link_directories("/usr/local/include/tensorflow")
+#include_directories(${TensorFlow_INCLUDE_DIRS})
+
+# include visilibity
+#set( VISILIBITY_DIR "/home/deanz/Documents/Github/VisiLibity1" )
+#set( VISILIBITY_SRCS "/home/deanz/Documents/Github/VisiLibity1/src/visilibity.cpp" )
+#set( VISILIBITY_HDRS "home/deanz/Documents/Github/VisiLibity1/src/visilibity.hpp" )
+#add_library( iris "/home/deanz/Documents/Github/VisiLibity1/src/visilibity.cpp" )
 
 include_directories(BEFORE "include")
 include_directories(BEFORE "${CMAKE_CURRENT_BINARY_DIR}/include")

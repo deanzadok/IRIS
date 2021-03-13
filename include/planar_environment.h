@@ -22,6 +22,9 @@ public:
     SizeType NumTargets() const;
     std::vector<Point> GetVisiblePoints(const std::vector<Vec2>& shape, const RealNum fov_in_rad) const;
     std::vector<Idx> GetVisiblePointIndices(const std::vector<Vec2>& shape, const RealNum fov_in_rad) const;
+    std::vector<Rectangle> GetObstacles();
+    std::vector<Point> GetInspectionPoints();
+    std::vector<RealNum> GetDimensions();
 
 private:
 	RealNum xmin_, xmax_, ymin_, ymax_;
