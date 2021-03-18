@@ -169,6 +169,8 @@ void ompl::geometric::RRG::setup()
     const char* tags = "serve"; // default model serving tag; can change in future
     int ntags = 1;
 
+    //double start_timestamp = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) * 1e-9;
+
     tfSession = TF_LoadSessionFromSavedModel(tfSessionOpts, tfRunOpts, saved_model_dir, &tags, ntags, tfGraph, NULL, tfStatus);
     if(TF_GetCode(tfStatus) == TF_OK)
     {
@@ -178,6 +180,9 @@ void ompl::geometric::RRG::setup()
     {
         printf("%s",TF_Message(tfStatus));
     }
+
+    //double end_timestamp = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) * 1e-9;
+    //std::cout << "Session creation: " << end_timestamp - start_timestamp << std::endl;
 
     // tf input tensor
     tfNumInputs = 1;
@@ -207,6 +212,10 @@ void ompl::geometric::RRG::setup()
 
     // sampling counter
     counter_sample_ = 0;
+
+    // initate random normal generator
+    distribution = new std::normal_distribution<double>(0.0, 1.0);
+    uniform_distribution = new std::uniform_real_distribution<double>(0.0, 1.0);
 }
 
 void ompl::geometric::RRG::clear()
@@ -410,8 +419,9 @@ ompl::base::PlannerStatus ompl::geometric::RRG::solve(const base::PlannerTermina
         // find closest state in the tree
         Motion *nmotion = nn_->nearest(rmotion);
 
-        if (intermediateSolutionCallback && si_->equalStates(nmotion->state, rstate)) 
+        if (intermediateSolutionCallback && si_->equalStates(nmotion->state, rstate)) {
             continue;
+        }
 
         base::State *dstate = rstate;
 
@@ -422,6 +432,8 @@ ompl::base::PlannerStatus ompl::geometric::RRG::solve(const base::PlannerTermina
             si_->getStateSpace()->interpolate(nmotion->state, rstate, maxDistance_ / d, xstate);
             dstate = xstate;
         }
+
+        updateConditionImage(dstate);
 
         // Check if the motion between the nearest state and the state to add is valid
         // if ( true )
@@ -1364,10 +1376,6 @@ void ompl::geometric::RRG::allocSampler()
     // No else
 }
 
-
-
-
-
 bool ompl::geometric::RRG::sampleUniform(base::State *statePtr)
 {
     // Use the appropriate sampler
@@ -1382,12 +1390,17 @@ bool ompl::geometric::RRG::sampleUniform(base::State *statePtr)
     else
     {
         // Simply return a state from the regular sampler
-        //sampler_->sampleUniform(statePtr);
-
-        updateConditionImage(statePtr);
+        if (counter_sample_ == 0) {
+            sampler_->sampleUniform(statePtr);
+        } else {
+            if ((*uniform_distribution)(generator) > p_zb) {
+                sampleAI(statePtr);
+            } else {
+                sampler_->sampleUniform(statePtr);
+            }
+        }
         
-        sampleAI(statePtr);
-
+        counter_sample_++;
 
         // Always true
         return true;
@@ -1429,7 +1442,6 @@ void ompl::geometric::RRG::updateConditionImage(base::State *statePtr) {
         cv::rectangle(*input_mat, cv::Point((int)round(targets_[i].coeff(0,0)*metascale_), (int)round(targets_[i].coeff(1,0)*metascale_)), cv::Point((int)round(targets_[i].coeff(0,0)*metascale_), (int)round(targets_[i].coeff(1,0)*metascale_)), cv::Scalar(100));
     }
 
-    counter_sample_++;
     cv::imwrite("sample_" + std::to_string(counter_sample_) + ".png", *input_mat);
     //std::cout << "End effector x: " << ee_val[0] << ", y: " << ee_val[1] << std::endl;
     
@@ -1444,7 +1456,7 @@ void ompl::geometric::RRG::sampleAI(base::State *statePtr) {
     uint totalElements = (*input_mat).total()*(*input_mat).channels(); // Note: image.total() == rows*cols.
     cv::Mat flat = (*input_mat).reshape(1, totalElements); // 1xN mat of 1 channel, O(1) operation
     for (int i=0;i<n_z;i++) {
-        data[i] = 0.0;
+        data[i] = (*distribution)(generator);
     }
     for (int i=n_z;i<input_size;i++) {
         data[i] = (float)(flat.at<uchar>(0, i-n_z)) / 255.0;
@@ -1458,19 +1470,25 @@ void ompl::geometric::RRG::sampleAI(base::State *statePtr) {
     }
     
     // run the Session
+    //double start_timestamp = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) * 1e-9;
+
     tfInputValues[0] = int_tensor;
     TF_SessionRun(tfSession, NULL, tfInput, tfInputValues, tfNumInputs, tfOutput, tfOutputValues, tfNumOutputs, NULL, 0,NULL , tfStatus);
+
+    //double end_timestamp = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) * 1e-9;
 
     if(TF_GetCode(tfStatus) != TF_OK) {
         printf("%s",TF_Message(tfStatus));
     }
-
+    //std::cout << tfOutputValues[0] << std::endl;
     void* buff = TF_TensorData(tfOutputValues[0]);
     float* offsets = (float*)buff;
-    std::cout << "Result Tensor :" << offsets[0] << ", " << offsets[1] << ", " << offsets[2] << ", " << offsets[3] << ", " << offsets[4] << std::endl;
+    std::cout << "Result Tensor :" << offsets[0] << ", " << offsets[1] << ", " << offsets[2] << ", " << offsets[3] << ", " << offsets[4] << ". Time: " << end_timestamp - start_timestamp << std::endl;
 
+    auto *rstate = static_cast<ob::RealVectorStateSpace::StateType *>(statePtr);
     for (int i=0; i<num_links_; i++) {
-        statePtr->as<ob::RealVectorStateSpace::StateType>()->values[i] = offsets[i];
+        //statePtr->as<ob::RealVectorStateSpace::StateType>()->values[i] = offsets[i];
+        rstate->values[i] = offsets[i];
     }
 
     return;
@@ -1526,6 +1544,8 @@ float* ompl::geometric::RRG::computeEndEffector(base::State *statePtr) {
     ee_val[0] = x;
     ee_val[1] = y;
     ee_val[2] = ee_orientation;
+
+    //std::cout << "ee_val: " << ee_val[0] << ", " << ee_val[1] << ", " << ee_val[2] << std::endl;
 
     return ee_val;
 }

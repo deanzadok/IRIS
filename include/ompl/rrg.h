@@ -54,6 +54,9 @@
 #include <opencv2/opencv.hpp>
 #include <tensorflow/c/c_api.h>
 #include <visilibity.hpp>
+#include <random>
+#include <chrono>
+#include <iomanip>
 
 namespace ompl
 {
@@ -583,6 +586,12 @@ namespace ompl
             VisiLibity::Environment environment;
             int metascale_ = 50;
             cv::Mat* input_mat;
+
+            // random generators
+            double p_zb = 0.5;
+            std::default_random_engine generator;
+            std::normal_distribution<double>* distribution;
+            std::uniform_real_distribution<double>* uniform_distribution;
 
             // input tensor
             int ndims;
