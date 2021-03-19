@@ -65,13 +65,20 @@ def prepare_data(data_dir, dest_name, start_idx=0, scale=50, end_idx=100000, lim
                 img_copy = img.copy()
                 for j in range(0,len(vertices_idxs)-1):
                     
+
+                    if (np.random.uniform() < 0.05):
+                        c_point = np.random.uniform(low=-np.pi, high=np.pi, size=5)
+                        if j > 0:
+                            j -= 1
+                    else:
+                        c_point = cspace_df.iloc[j].to_numpy()
+
                     # compute end-point for vertex
-                    links_val = np.rint(compute_links(cspace_df.iloc[j].to_numpy()) * scale).astype(int)
+                    links_val = np.rint(compute_links(c_point) * scale).astype(int)
                     ee_val = links_val[-1]
 
                     # get orientation of end effector
-                    #ee_orientation = cspace_df.iloc[j].to_numpy()[-1]
-                    ee_orientation = cspace_df.iloc[j].sum()
+                    ee_orientation = c_point.sum()
 
                     # set visibility triangle
                     x1 = ee_val[0] + max_wall * np.cos(ee_orientation + 0.5 * fov)
@@ -121,8 +128,6 @@ def prepare_data(data_dir, dest_name, start_idx=0, scale=50, end_idx=100000, lim
                             imgs.append(np.expand_dims(img_copy, axis=0))
                             c_points.append(np.expand_dims(cspace_df.iloc[j+1].to_numpy(), axis=0))
                 print(f'processed images: {counter_samples}')
-                if counter_samples % 850 == 0:
-                    print(f'processed images: {counter_samples}')
                 counter_samples += 1
 
 
@@ -180,7 +185,7 @@ def save_print(polygon):
         
     return end_pos_x, end_pos_y 
 
-def load_data(data_dir, num_imgs=None, batch_size=32, test_sample=False):
+def load_data(data_dir, num_imgs=None, batch_size=32, test_sample=False, scale=50):
 
     # load h5 files
     imgs_np_list, cs_np_list = [], []
@@ -190,6 +195,10 @@ def load_data(data_dir, num_imgs=None, batch_size=32, test_sample=False):
         dataset_dict = h5py.File(data_file, 'r')
         imgs_np_list.append(np.asarray(dataset_dict['images'], dtype=np.float32))
         cs_np_list.append(np.asarray(dataset_dict['cpoints'], dtype=np.float32))
+
+    # load inspection points csv
+    inspection_points = pd.read_csv(os.path.join(data_dir, f'test_planar_1_inspection_points.csv'))
+    inspection_points = tf.convert_to_tensor(inspection_points.to_numpy())
 
     # concat all h5 files
     imgs_np = np.concatenate(imgs_np_list, axis=0)
@@ -214,7 +223,7 @@ def load_data(data_dir, num_imgs=None, batch_size=32, test_sample=False):
     # convert to tf format dataset and prepare batches
     train_ds = tf.data.Dataset.from_tensor_slices((imgs_np[:-test_split,:], cs_np[:-test_split,:])).shuffle(len(imgs_np[:-test_split,:])).batch(batch_size)
     test_ds = tf.data.Dataset.from_tensor_slices((imgs_np[-test_split:,:], cs_np[-test_split:,:])).shuffle(len(imgs_np[-test_split:,:])).batch(batch_size)
-    return train_ds, test_ds
+    return train_ds, test_ds, inspection_points
 
 
 if __name__ == '__main__':
@@ -222,5 +231,6 @@ if __name__ == '__main__':
     os.environ["CUDA_VISIBLE_DEVICES"]="1"
     os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'false'
 
-    data_dir = 'build/data10k'
-    prepare_data(data_dir, dest_name='data_5.h5', start_idx=4000, scale=50, end_idx=5000, limit_samples=1e6)
+    data_dir = 'build/data10k_v2'
+    for i in range(10):
+        prepare_data(data_dir, dest_name=f'data_10k_v2_noise_{i}.h5', start_idx=1000*i, scale=50, end_idx=1000*(i+1), limit_samples=1e6)

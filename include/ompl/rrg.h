@@ -588,7 +588,7 @@ namespace ompl
             cv::Mat* input_mat;
 
             // random generators
-            double p_zb = 0.5;
+            double p_zb = 1.0;
             std::default_random_engine generator;
             std::normal_distribution<double>* distribution;
             std::uniform_real_distribution<double>* uniform_distribution;

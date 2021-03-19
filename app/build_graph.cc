@@ -65,10 +65,11 @@ int main(int argc, char** argv) {
     SizeType num_vertex = std::stoi(argv[2]);
     String file_to_write = argv[3];
     Idx num_obstacles = 10;
-    
     if (argc > 4) {
         num_obstacles = std::stoi(argv[4]);
     }
+
+    RealNum max_obstacle_length = 0.2 - 0.13*(num_obstacles-5)/(100-5);
 
     // Robot design.
     Vec2 origin(1, 0);
@@ -83,7 +84,7 @@ int main(int argc, char** argv) {
 
     // Environment setup.
     auto env = std::make_shared<planar::PlanarEnvironment>(2.0, 2.0, file_to_write, 100, seed);
-    env->RandomObstacles(num_obstacles, 0.2);
+    env->RandomObstacles(num_obstacles, max_obstacle_length);
 
     // Planner.
     auto planner = std::make_shared<planar::PlanarPlanner>(robot, env, seed);

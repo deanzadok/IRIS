@@ -92,11 +92,14 @@ ompl::geometric::RRG::RRG(const base::SpaceInformationPtr &si)
 
 ompl::geometric::RRG::~RRG()
 {
-    // free TF memory
-    TF_DeleteGraph(tfGraph);
-    TF_DeleteSession(tfSession, tfStatus);
-    TF_DeleteSessionOptions(tfSessionOpts);
-    TF_DeleteStatus(tfStatus);
+    if (p_zb < 1.0) {
+
+        // free TF memory
+        TF_DeleteGraph(tfGraph);
+        TF_DeleteSession(tfSession, tfStatus);
+        TF_DeleteSessionOptions(tfSessionOpts);
+        TF_DeleteStatus(tfStatus);
+    }
 
     freeMemory();
 }
@@ -158,57 +161,62 @@ void ompl::geometric::RRG::setup()
     // Calculate some constants:
     calculateRewiringLowerBounds();
 
-    // initiate tensorflow model
-    tfGraph = TF_NewGraph();
-    tfStatus = TF_NewStatus();
 
-    tfSessionOpts = TF_NewSessionOptions();
-    tfRunOpts = NULL;
+    if (p_zb < 1.0) {
 
-    const char* saved_model_dir = "saved_model_decoder/";
-    const char* tags = "serve"; // default model serving tag; can change in future
-    int ntags = 1;
+        // initiate tensorflow model
+        tfGraph = TF_NewGraph();
+        tfStatus = TF_NewStatus();
 
-    //double start_timestamp = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) * 1e-9;
+        tfSessionOpts = TF_NewSessionOptions();
+        tfRunOpts = NULL;
 
-    tfSession = TF_LoadSessionFromSavedModel(tfSessionOpts, tfRunOpts, saved_model_dir, &tags, ntags, tfGraph, NULL, tfStatus);
-    if(TF_GetCode(tfStatus) == TF_OK)
-    {
-        printf("TF_LoadSessionFromSavedModel OK\n");
+        const char* saved_model_dir = "saved_model_decoder/";
+        const char* tags = "serve"; // default model serving tag; can change in future
+        int ntags = 1;
+
+        //double start_timestamp = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) * 1e-9;
+
+        tfSession = TF_LoadSessionFromSavedModel(tfSessionOpts, tfRunOpts, saved_model_dir, &tags, ntags, tfGraph, NULL, tfStatus);
+        if(TF_GetCode(tfStatus) == TF_OK)
+        {
+            printf("TF_LoadSessionFromSavedModel OK\n");
+        }
+        else
+        {
+            printf("%s",TF_Message(tfStatus));
+        }
+
+        //double end_timestamp = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) * 1e-9;
+        //std::cout << "Session creation: " << end_timestamp - start_timestamp << std::endl;
+
+        // tf input tensor
+        tfNumInputs = 1;
+        tfInput = (TF_Output*)malloc(sizeof(TF_Output) * tfNumInputs);
+
+        TF_Output t0 = {TF_GraphOperationByName(tfGraph, "serving_default_input_1"), 0};
+        if(t0.oper == NULL)
+            printf("ERROR: Failed TF_GraphOperationByName serving_default_input_1\n");
+        else
+            printf("TF_GraphOperationByName serving_default_input_1 is OK\n");
+        tfInput[0] = t0;
+
+        // tf output tensor
+        tfNumOutputs = 1;
+        tfOutput = (TF_Output*)malloc(sizeof(TF_Output) * tfNumOutputs);
+
+        TF_Output t2 = {TF_GraphOperationByName(tfGraph, "StatefulPartitionedCall"), 0};
+        if(t2.oper == NULL)
+            printf("ERROR: Failed TF_GraphOperationByName StatefulPartitionedCall\n");
+        else	
+        printf("TF_GraphOperationByName StatefulPartitionedCall is OK\n");
+        tfOutput[0] = t2;
+
+        // allocate data for inputs & outputs
+        tfInputValues = (TF_Tensor**)malloc(sizeof(TF_Tensor*)*tfNumInputs);
+        tfOutputValues = (TF_Tensor**)malloc(sizeof(TF_Tensor*)*tfNumOutputs);
+
     }
-    else
-    {
-        printf("%s",TF_Message(tfStatus));
-    }
-
-    //double end_timestamp = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) * 1e-9;
-    //std::cout << "Session creation: " << end_timestamp - start_timestamp << std::endl;
-
-    // tf input tensor
-    tfNumInputs = 1;
-    tfInput = (TF_Output*)malloc(sizeof(TF_Output) * tfNumInputs);
-
-    TF_Output t0 = {TF_GraphOperationByName(tfGraph, "serving_default_input_1"), 0};
-    if(t0.oper == NULL)
-        printf("ERROR: Failed TF_GraphOperationByName serving_default_input_1\n");
-    else
-	    printf("TF_GraphOperationByName serving_default_input_1 is OK\n");
-    tfInput[0] = t0;
-
-    // tf output tensor
-    tfNumOutputs = 1;
-    tfOutput = (TF_Output*)malloc(sizeof(TF_Output) * tfNumOutputs);
-
-    TF_Output t2 = {TF_GraphOperationByName(tfGraph, "StatefulPartitionedCall"), 0};
-    if(t2.oper == NULL)
-        printf("ERROR: Failed TF_GraphOperationByName StatefulPartitionedCall\n");
-    else	
-	printf("TF_GraphOperationByName StatefulPartitionedCall is OK\n");
-    tfOutput[0] = t2;
-
-    // allocate data for inputs & outputs
-    tfInputValues = (TF_Tensor**)malloc(sizeof(TF_Tensor*)*tfNumInputs);
-    tfOutputValues = (TF_Tensor**)malloc(sizeof(TF_Tensor*)*tfNumOutputs);
 
     // sampling counter
     counter_sample_ = 0;
@@ -433,8 +441,10 @@ ompl::base::PlannerStatus ompl::geometric::RRG::solve(const base::PlannerTermina
             dstate = xstate;
         }
 
-        updateConditionImage(dstate);
-
+        if (p_zb < 1.0) {
+            updateConditionImage(dstate);
+        }
+        
         // Check if the motion between the nearest state and the state to add is valid
         // if ( true )
         if (si_->checkMotion(nmotion->state, dstate))
@@ -1470,12 +1480,12 @@ void ompl::geometric::RRG::sampleAI(base::State *statePtr) {
     }
     
     // run the Session
-    //double start_timestamp = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) * 1e-9;
+    double start_timestamp = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) * 1e-9;
 
     tfInputValues[0] = int_tensor;
     TF_SessionRun(tfSession, NULL, tfInput, tfInputValues, tfNumInputs, tfOutput, tfOutputValues, tfNumOutputs, NULL, 0,NULL , tfStatus);
 
-    //double end_timestamp = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) * 1e-9;
+    double end_timestamp = static_cast<double>(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count()) * 1e-9;
 
     if(TF_GetCode(tfStatus) != TF_OK) {
         printf("%s",TF_Message(tfStatus));
