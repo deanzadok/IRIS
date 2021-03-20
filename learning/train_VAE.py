@@ -8,11 +8,11 @@ from models import VAEModel
 from load import load_data
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--data_dir', '-data_dir', help='path h5 data dir', default='build/data10k', type=str)
-parser.add_argument('--output_dir', '-output_dir', help='path to output folder', default='learning/test_h5', type=str)
+parser.add_argument('--data_dir', '-data_dir', help='path h5 data dir', default='build/data10k_v2', type=str)
+parser.add_argument('--output_dir', '-output_dir', help='path to output folder', default='learning/test_v2', type=str)
 parser.add_argument('--batch_size', '-batch_size', help='number of samples in one minibatch', default=32, type=int)
-parser.add_argument('--num_imgs', '-num_imgs', help='number of images to train on', default=100000, type=int)
-parser.add_argument('--epochs', '-epochs', help='number of epochs to train the model', default=100, type=int)
+parser.add_argument('--num_imgs', '-num_imgs', help='number of images to train on', default=1000000, type=int)
+parser.add_argument('--epochs', '-epochs', help='number of epochs to train the model', default=40, type=int)
 parser.add_argument('--cp_interval', '-cp_interval', help='interval for checkpoint saving', default=20, type=int)
 parser.add_argument('--n_z', '-n_z', help='size of the each one of the parameters [mean,stddev] in the latent space', default=8, type=int)
 parser.add_argument('--gpu', '-gpu', help='gpu number to train on', default='0', type=str)

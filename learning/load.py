@@ -66,7 +66,7 @@ def prepare_data(data_dir, dest_name, start_idx=0, scale=50, end_idx=100000, lim
                 for j in range(0,len(vertices_idxs)-1):
                     
 
-                    if (np.random.uniform() < 0.05):
+                    if (np.random.uniform() < 0.0):
                         c_point = np.random.uniform(low=-np.pi, high=np.pi, size=5)
                         if j > 0:
                             j -= 1
@@ -185,11 +185,11 @@ def save_print(polygon):
         
     return end_pos_x, end_pos_y 
 
-def load_data(data_dir, num_imgs=None, batch_size=32, test_sample=False, scale=50):
+def load_data(data_dir, num_imgs=None, batch_size=32, test_sample=False, scale=50, noise_thresh=0.8):
 
     # load h5 files
     imgs_np_list, cs_np_list = [], []
-    for data_file in glob.glob(os.path.join(data_dir, "*.h5")):
+    for data_file in glob.glob(os.path.join(data_dir, "*noise*.h5")):
 
         # get h5 file as numpy
         dataset_dict = h5py.File(data_file, 'r')
@@ -203,6 +203,13 @@ def load_data(data_dir, num_imgs=None, batch_size=32, test_sample=False, scale=5
     # concat all h5 files
     imgs_np = np.concatenate(imgs_np_list, axis=0)
     cs_np = np.concatenate(cs_np_list, axis=0)
+
+    # free memory
+    imgs_np_list = None
+    cs_np_list = None
+
+    # add noise
+    imgs_np = imgs_np + np.rint(np.clip(np.random.uniform(low=0.0, high=1.0, size=imgs_np.shape), noise_thresh, 1.0)).astype(int)
 
     # trim data if asked to
     if num_imgs is not None and imgs_np.shape[0] > num_imgs:
@@ -232,5 +239,5 @@ if __name__ == '__main__':
     os.environ['TF_FORCE_GPU_ALLOW_GROWTH'] = 'false'
 
     data_dir = 'build/data10k_v2'
-    for i in range(10):
-        prepare_data(data_dir, dest_name=f'data_10k_v2_noise_{i}.h5', start_idx=1000*i, scale=50, end_idx=1000*(i+1), limit_samples=1e6)
+    for i in range(2, 10):
+        prepare_data(data_dir, dest_name=f'data_10k_v2_{i}.h5', start_idx=1000*i, scale=50, end_idx=1000*(i+1), limit_samples=1e6)
