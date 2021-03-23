@@ -171,7 +171,7 @@ void ompl::geometric::RRG::setup()
         tfSessionOpts = TF_NewSessionOptions();
         tfRunOpts = NULL;
 
-        const char* saved_model_dir = "saved_model_decoder/";
+        const char* saved_model_dir = "saved_model_decoder_only10obs/";
         const char* tags = "serve"; // default model serving tag; can change in future
         int ntags = 1;
 
@@ -224,6 +224,11 @@ void ompl::geometric::RRG::setup()
     // initate random normal generator
     distribution = new std::normal_distribution<double>(0.0, 1.0);
     uniform_distribution = new std::uniform_real_distribution<double>(0.0, 1.0);
+}
+
+void ompl::geometric::RRG::setPzb(double given_p_zb) 
+{
+    p_zb = given_p_zb;
 }
 
 void ompl::geometric::RRG::clear()
@@ -295,15 +300,6 @@ VisiLibity::Environment ompl::geometric::RRG::prepareEnvironment(std::vector<Rec
         obstaclePoints.push_back(VisiLibity::Point(obstacles[i].LowerRight().coeff(0,0)*metascale_, obstacles[i].LowerRight().coeff(1,0)*metascale_));
         obstaclePoints.push_back(VisiLibity::Point(obstacles[i].UpperRight().coeff(0,0)*metascale_, obstacles[i].UpperRight().coeff(1,0)*metascale_));
         obstaclePoints.push_back(VisiLibity::Point(obstacles[i].UpperLeft().coeff(0,0)*metascale_, obstacles[i].UpperLeft().coeff(1,0)*metascale_));
-
-        // obstaclePoints.push_back(VisiLibity::Point(obstacles[0][i]*metascale_, obstacles[1][i]*metascale_));
-        // obstaclePoints.push_back(VisiLibity::Point(obstacles[2][i]*metascale_, obstacles[1][i]*metascale_));
-        // obstaclePoints.push_back(VisiLibity::Point(obstacles[2][i]*metascale_, obstacles[3][i]*metascale_));
-        // obstaclePoints.push_back(VisiLibity::Point(obstacles[0][i]*metascale_, obstacles[3][i]*metascale_));
-        //std::cout << "Obstacle Point 1: " << (*it_obs)[0]*scale << ", " << (*it_obs)[1]*scale << std::endl;
-        //std::cout << "Obstacle Point 2: " << (*it_obs)[2]*scale << ", " << (*it_obs)[1]*scale << std::endl;
-        //std::cout << "Obstacle Point 3: " << (*it_obs)[2]*scale << ", " << (*it_obs)[3]*scale << std::endl;
-        //std::cout << "Obstacle Point 4: " << (*it_obs)[0]*scale << ", " << (*it_obs)[3]*scale << std::endl;
 
         VisiLibity::Polygon obstaclePolygon(obstaclePoints);
         environment.add_hole(obstaclePolygon);
@@ -1452,7 +1448,7 @@ void ompl::geometric::RRG::updateConditionImage(base::State *statePtr) {
         cv::rectangle(*input_mat, cv::Point((int)round(targets_[i].coeff(0,0)*metascale_), (int)round(targets_[i].coeff(1,0)*metascale_)), cv::Point((int)round(targets_[i].coeff(0,0)*metascale_), (int)round(targets_[i].coeff(1,0)*metascale_)), cv::Scalar(100));
     }
 
-    cv::imwrite("sample_" + std::to_string(counter_sample_) + ".png", *input_mat);
+    //cv::imwrite("sample_" + std::to_string(counter_sample_) + ".png", *input_mat);
     //std::cout << "End effector x: " << ee_val[0] << ", y: " << ee_val[1] << std::endl;
     
     return;
@@ -1498,7 +1494,7 @@ void ompl::geometric::RRG::sampleAI(base::State *statePtr) {
     auto *rstate = static_cast<ob::RealVectorStateSpace::StateType *>(statePtr);
     for (int i=0; i<num_links_; i++) {
         //statePtr->as<ob::RealVectorStateSpace::StateType>()->values[i] = offsets[i];
-        rstate->values[i] = offsets[i];
+        rstate->values[i] = offsets[i] * M_PI;
     }
 
     return;
@@ -1528,9 +1524,6 @@ std::vector<cv::Point> ompl::geometric::RRG::computeVisibilityTriangle(float* ee
     float y2 = metascale_ * ee_val[1] + maxWall * std::sin(ee_val[2] - 0.5 * fov_);
 
     std::vector<cv::Point> points;
-    // cv::Point((int)round(ee_val[0]*scale), (int)round(ee_val[1]*scale))
-    // points = { cv::Point((int)round(ee_val[0]*scale), (int)round(ee_val[1]*scale)),  cv::Point((int)round(x1), (int)round(y1)), 
-    //         cv::Point((int)round(x2), (int)round(y2)) };
     points.push_back(cv::Point((int)round(ee_val[0]*metascale_), (int)round(ee_val[1]*metascale_)));
     points.push_back(cv::Point((int)round(x2), (int)round(y2)));
     points.push_back(cv::Point((int)round(x1), (int)round(y1)));

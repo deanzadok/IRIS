@@ -65,11 +65,16 @@ int main(int argc, char** argv) {
     SizeType num_vertex = std::stoi(argv[2]);
     String file_to_write = argv[3];
     Idx num_obstacles = 10;
+    double p_zb = 1.0;
     if (argc > 4) {
         num_obstacles = std::stoi(argv[4]);
     }
+    if (argc > 5) {
+        p_zb = std::stof(argv[5]);
+    }
 
-    RealNum max_obstacle_length = 0.2 - 0.13*(num_obstacles-5)/(100-5);
+    //RealNum max_obstacle_length = 0.2 - 0.13*(num_obstacles-5)/(100-5);
+    RealNum max_obstacle_length = 0.2;
 
     // Robot design.
     Vec2 origin(1, 0);
@@ -91,7 +96,7 @@ int main(int argc, char** argv) {
     // If we want a fixed start configuration, use a fixed seed point here.
     planner->SampleStartConfig(1000, 1);
     //planner->SampleStartConfig(1000, seed);
-    planner->BuildAndSaveInspectionGraph(file_to_write, num_vertex);
+    planner->BuildAndSaveInspectionGraph(file_to_write, num_vertex, p_zb);
 
 #else
     // Drone robot.

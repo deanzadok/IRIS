@@ -5,10 +5,9 @@ import h5py
 import argparse
 import tensorflow as tf
 from models import VAEModel
-from load import load_data
 
 parser = argparse.ArgumentParser()
-parser.add_argument('--model_dir', '-model_dir', help='path to model file', default='learning/test_h5', type=str)
+parser.add_argument('--model_dir', '-model_dir', help='path to model file', default='learning/test_v2_nonoise', type=str)
 parser.add_argument('--n_z', '-n_z', help='size of the each one of the parameters [mean,stddev] in the latent space', default=8, type=int)
 parser.add_argument('--gpu', '-gpu', help='gpu number to train on', default='0', type=str)
 args = parser.parse_args()

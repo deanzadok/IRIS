@@ -52,8 +52,6 @@ def prepare_data(data_dir, dest_name, start_idx=0, scale=50, end_idx=100000, lim
 
         # load inspection points csv
         inspection_points = (pd.read_csv(files_list['inspection_points']) * scale).round(0).astype(int)
-        # draw inspection points on the image
-        #inspection_points.apply(lambda x: cv2.rectangle(img, (x['x'], x['y']), (x['x'], x['y']), 100, -1), axis=1)
 
         # load configuration space csv
         cspace_df = pd.read_csv(files_list['configurations'], delimiter=' ', header=None).drop(columns=[0,6])
@@ -104,25 +102,13 @@ def prepare_data(data_dir, dest_name, start_idx=0, scale=50, end_idx=100000, lim
                         visilbe_poly = poly.intersection(vis_tri)
                         if type(visilbe_poly) == Polygon and len(list(visilbe_poly.exterior.coords)) > 0:
                             visilbe_poly_pts = np.array(list(visilbe_poly.exterior.coords)).reshape((-1,1,2)).astype(int)
-                            #poly_pts = np.array(list(poly.exterior.coords)).reshape((-1,1,2)).astype(int)
-                            #vis_tri_pts = np.array(list(vis_tri.exterior.coords)).reshape((-1,1,2)).astype(int)
 
                             # draw visilbe polygon of the observer
-                            #cv2.polylines(img_copy, [visilbe_poly_pts], True, 150)
                             cv2.fillPoly(img_copy, [visilbe_poly_pts], 150)
 
                             # draw obstacles and inspection points
                             obstacles.apply(lambda x: cv2.rectangle(img_copy, (x['x'], x['y']),  (x['x']+x['width'], x['y']+x['length']), 255, -1), axis=1)
                             inspection_points.apply(lambda x: cv2.rectangle(img_copy, (x['x'], x['y']), (x['x'], x['y']), 100, -1), axis=1)
-
-                            # draw
-                            #cv2.rectangle(img_copy, (ee_val[0], ee_val[1]), (ee_val[0], ee_val[1]), 150, -1)
-
-                            # draw random noise points
-                            # noise_points_num = np.random.randint(low=0, high=20)
-                            # noise_points = np.random.randint(low=0, high=100, size=(noise_points_num, 2))
-                            # for k in range(len(noise_points)):
-                            #     cv2.rectangle(img_copy, (noise_points[k,0], noise_points[k,1]), (noise_points[k,0], noise_points[k,1]), 150, -1)
 
                             # add sample (x,y)
                             imgs.append(np.expand_dims(img_copy, axis=0))
@@ -137,11 +123,6 @@ def prepare_data(data_dir, dest_name, start_idx=0, scale=50, end_idx=100000, lim
     # normilize data
     cs_np = np.concatenate(c_points) / np.pi
     imgs_np = np.concatenate(imgs).reshape([len(cs_np),-1]) / 255.0
-
-    # shuffle images and c-space points in the same order
-    # p = np.random.permutation(imgs_np.shape[0])
-    # imgs_np = imgs_np[p]
-    # cs_np = cs_np[p]
 
     # write h5 file to the same location
     with h5py.File(os.path.join(data_dir, dest_name), "w") as f:
@@ -173,64 +154,102 @@ def save_print(polygon):
 
     end_pos_x = []
     end_pos_y = []
-    #print ('Points of Polygon: ')
     for i in range(polygon.n()):
         x = polygon[i].x()
         y = polygon[i].y()
         
         end_pos_x.append(x)
         end_pos_y.append(y)
-                
-        #print( x,y) 
-        
+                        
     return end_pos_x, end_pos_y 
 
-def load_data(data_dir, num_imgs=None, batch_size=32, test_sample=False, scale=50, noise_thresh=0.8):
 
-    # load h5 files
-    imgs_np_list, cs_np_list = [], []
-    for data_file in glob.glob(os.path.join(data_dir, "*noise*.h5")):
+class DataManagement(object):
 
-        # get h5 file as numpy
-        dataset_dict = h5py.File(data_file, 'r')
-        imgs_np_list.append(np.asarray(dataset_dict['images'], dtype=np.float32))
-        cs_np_list.append(np.asarray(dataset_dict['cpoints'], dtype=np.float32))
+    def __init__(self, data_dir, num_files=7, num_imgs=None, batch_size=32, test_sample=False, scale=50, noise_thresh=50):
+        super(DataManagement, self).__init__()
 
-    # load inspection points csv
-    inspection_points = pd.read_csv(os.path.join(data_dir, f'test_planar_1_inspection_points.csv'))
-    inspection_points = tf.convert_to_tensor(inspection_points.to_numpy())
+        self.noise_thresh = noise_thresh
 
-    # concat all h5 files
-    imgs_np = np.concatenate(imgs_np_list, axis=0)
-    cs_np = np.concatenate(cs_np_list, axis=0)
+        # load h5 files
+        imgs_np_list, cs_np_list = [], []
+        for i, data_file in enumerate(glob.glob(os.path.join(data_dir, "data_10k_v2_[!noise]*.h5"))):
 
-    # free memory
-    imgs_np_list = None
-    cs_np_list = None
+            # get h5 file as numpy
+            dataset_dict = h5py.File(data_file, 'r')
+            imgs_np_list.append(np.asarray(dataset_dict['images'], dtype=np.float32))
+            cs_np_list.append(np.asarray(dataset_dict['cpoints'], dtype=np.float32))
 
-    # add noise
-    imgs_np = imgs_np + np.rint(np.clip(np.random.uniform(low=0.0, high=1.0, size=imgs_np.shape), noise_thresh, 1.0)).astype(int)
+            if i == num_files - 1:
+                break
 
-    # trim data if asked to
-    if num_imgs is not None and imgs_np.shape[0] > num_imgs:
-        imgs_np = imgs_np[:num_imgs,:]
-        cs_np = cs_np[:num_imgs,:]
+        # load inspection points csv
+        self.inspection_points = pd.read_csv(os.path.join(data_dir, f'test_planar_1_inspection_points.csv'))
+        self.inspection_points = tf.convert_to_tensor(self.inspection_points.to_numpy())
 
-    if test_sample:
-        return imgs_np[-1:,:], cs_np[-1:,:]
+        # concat all h5 files
+        imgs_np = np.concatenate(imgs_np_list, axis=0)
+        cs_np = np.concatenate(cs_np_list, axis=0)
 
-    # decide test split
-    test_split = int(imgs_np.shape[0] * 0.3) # TODO: Note that the obstacles are already shuffled, but the trajectories are not!
+        # free memory
+        imgs_np_list = None
+        cs_np_list = None
 
-    print("Samples for train: {}".format(imgs_np.shape[0] - test_split))
-    print("Samples for test: {}".format(test_split))
-    # add noise
-    #imgs_np[:-test_split,:] = imgs_np[:-test_split,:] + np.random.normal(loc=imgs_np[:-test_split,:].mean(), scale=imgs_np[:-test_split,:].std()/10, size=imgs_np[:-test_split,:].shape)
+        # trim data if asked to
+        if num_imgs is not None and imgs_np.shape[0] > num_imgs:
+            imgs_np = imgs_np[:num_imgs,:]
+            cs_np = cs_np[:num_imgs,:]
 
-    # convert to tf format dataset and prepare batches
-    train_ds = tf.data.Dataset.from_tensor_slices((imgs_np[:-test_split,:], cs_np[:-test_split,:])).shuffle(len(imgs_np[:-test_split,:])).batch(batch_size)
-    test_ds = tf.data.Dataset.from_tensor_slices((imgs_np[-test_split:,:], cs_np[-test_split:,:])).shuffle(len(imgs_np[-test_split:,:])).batch(batch_size)
-    return train_ds, test_ds, inspection_points
+        if test_sample:
+            return imgs_np[-1:,:], cs_np[-1:,:]
+
+        # shuffle images and labels in the same order
+        p = np.random.permutation(imgs_np.shape[0])
+        imgs_np = imgs_np[p]
+        cs_np = cs_np[p]
+
+        # decide test split
+        test_split = int(imgs_np.shape[0] * 0.3) 
+
+        # split train and test
+        self.imgs_np_train = imgs_np[:-test_split,:]
+        self.cs_np_train = cs_np[:-test_split,:]
+        self.imgs_np_test = imgs_np[-test_split:,:]
+        self.cs_np_test = cs_np[-test_split:,:]
+
+        print("Samples for train: {}".format(imgs_np.shape[0] - test_split))
+        print("Samples for test: {}".format(test_split))
+
+        # generator output types
+        output_types = (tf.float32, tf.float32)
+
+        # create generators
+        self.train_gen = tf.data.Dataset.from_generator(self.train_generator, output_types=output_types).batch(batch_size)
+        self.test_gen = tf.data.Dataset.from_generator(self.test_generator, output_types=output_types).batch(batch_size)
+
+
+    def train_generator(self):
+
+        for sample_idx in range(len(self.imgs_np_train)):
+
+            img = self.imgs_np_train[sample_idx,:]
+            c_point = self.cs_np_train[sample_idx,:]
+
+            # add noise
+            #white_noise = np.rint(np.clip(np.random.uniform(low=0.0, high=1.0, size=img.shape), self.noise_thresh, 1.0)).astype(int)
+            white_noise = np.clip(np.random.randint(low=0, high=self.noise_thresh, size=img.shape) - (self.noise_thresh - 2), 0, 1)
+
+            yield np.clip(img + white_noise, 0, 1), c_point
+            #yield img, c_point
+        
+    def test_generator(self):
+
+        for sample_idx in range(len(self.imgs_np_test)):
+
+            img = self.imgs_np_test[sample_idx,:]
+            c_point = self.cs_np_test[sample_idx,:]
+
+            yield img, c_point
 
 
 if __name__ == '__main__':

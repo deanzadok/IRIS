@@ -39,7 +39,7 @@ public:
 
     void SampleStartConfig(const Idx max_iter=1000, const Idx seed=1);
     void SetParams(const RealNum step_size, const bool if_k_nearest);
-    void BuildAndSaveInspectionGraph(const String file_name, const Idx target_size);
+    void BuildAndSaveInspectionGraph(const String file_name, const Idx target_size, double p_zb);
 
 private:
     RobotPtr robot_;

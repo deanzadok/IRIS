@@ -49,7 +49,7 @@ void PlanarPlanner::SetParams(const RealNum step_size, const bool if_k_nearest) 
     k_nearest_ = if_k_nearest;
 }
 
-void PlanarPlanner::BuildAndSaveInspectionGraph(const String file_name, const Idx target_size) {
+void PlanarPlanner::BuildAndSaveInspectionGraph(const String file_name, const Idx target_size, double p_zb) {
     std::cout << "Prepare to build an inspection graph of size: " << target_size << std::endl;
 
     auto dim = robot_->NumLinks();
@@ -91,6 +91,7 @@ void PlanarPlanner::BuildAndSaveInspectionGraph(const String file_name, const Id
     planner->as<og::RRG>()->setGoalBias(0.0);
     planner->as<og::RRG>()->setKNearest(k_nearest_);
     planner->setProblemDefinition(problem_def);
+    planner->as<og::RRG>()->setPzb(p_zb);
     planner->setup();
 
     // load zb-features 
@@ -110,11 +111,24 @@ void PlanarPlanner::BuildAndSaveInspectionGraph(const String file_name, const Id
     ob::PlannerData tree_data(space_info_);
     ob::PlannerData graph_data(space_info_);
 
+    String build_cov_file = file_name + "_build_cov";
+    std::ofstream fout;
+	fout.open(build_cov_file);
+	if (!fout.is_open()) {
+		std::cerr << "Coverage build file cannot be opened!" << std::endl;
+		exit(1);
+	}
+
     while (graph->NumVertices() < target_size) {
         BuildRRGIncrementally(graph, planner, tree_data, graph_data);
         std::cout << "Covered targets: " << graph->NumTargetsCovered() 
             << ", " << graph->NumTargetsCovered()*(RealNum)100/num_targets << "%" << std::endl;
+        
+        fout << graph->NumTargetsCovered() << " " << graph->NumTargetsCovered()*(RealNum)100/num_targets << std::endl;
     }
+	fout.close();
+	std::cout << "Coverage build saved!" << std::endl;
+
 
     graph->Save(file_name, true, dim);
 

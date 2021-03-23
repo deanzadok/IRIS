@@ -2,7 +2,7 @@ import tensorflow as tf
 from tensorflow.keras import Model
 from tensorflow.keras.activations import softplus, relu
 from tensorflow.keras.backend import random_normal
-from tensorflow.keras.layers import Dense, Flatten, Conv2D, BatchNormalization, Lambda, Conv2DTranspose, Reshape, Concatenate
+from tensorflow.keras.layers import Dense, Flatten, Conv2D, BatchNormalization, Lambda, Conv2DTranspose, Reshape, Concatenate, Dropout
 
 # model definition class
 class VAEModel(Model):
@@ -25,7 +25,7 @@ class VAEModel(Model):
         # Decoder architecture
         self.fcd1 = Dense(name='dense_3', units=2048, activation='relu')
         self.fcd2 = Dense(name='dense_4', units=1024, activation='relu')
-        self.fcd3 = Dense(name='dense_5', units=5)
+        self.fcd3 = Dense(name='dense_5', units=self.dim)
 
     def call(self, inputs, inter=None):
         
@@ -56,3 +56,26 @@ class VAEModel(Model):
             x = self.fcd3(x)
             return x
 
+
+
+# model definition class
+class BaseModel(Model):
+    def __init__(self, dim=5):
+        super(BaseModel, self).__init__()
+    
+        self.dim = dim
+
+        # architecture
+        self.fc1 = Dense(units=4096, activation='relu')
+        self.fc2 = Dense(units=1024, activation='relu')
+        self.fc3 = Dense(units=256, activation='relu')
+        self.drop = Dropout(rate=0.5)
+        self.fc4 = Dense(units=self.dim)
+
+    def call(self, inputs, inter=None):
+        
+        x = self.fc1(inputs)
+        x = self.fc2(x)
+        x = self.fc3(x)
+        x = self.drop(x)
+        return self.fc4(x)

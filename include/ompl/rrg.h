@@ -121,6 +121,8 @@ namespace ompl
 
             void setup() override;
 
+            void setPzb(double given_p_zb);
+
             /** \brief Set the goal bias
 
                 In the process of randomly selecting states in
@@ -588,7 +590,7 @@ namespace ompl
             cv::Mat* input_mat;
 
             // random generators
-            double p_zb = 1.0;
+            double p_zb;
             std::default_random_engine generator;
             std::normal_distribution<double>* distribution;
             std::uniform_real_distribution<double>* uniform_distribution;
